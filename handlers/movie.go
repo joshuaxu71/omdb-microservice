@@ -8,8 +8,10 @@ import (
 	"log"
 	"net/http"
 	"stock-bit/common"
+	"stock-bit/helpers"
 	"stock-bit/models"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -98,4 +100,38 @@ func (s *Server) GetMovies(ctx context.Context, in *models.GetMoviesParams) (*mo
 	}
 
 	return searchResult, nil
+}
+
+type API struct {
+	URL string
+}
+
+func (api *API) GetMovieById() (*models.Movie, error) {
+	movie := &models.Movie{}
+
+	to := time.Duration(10)
+	opt := &helpers.HttpOptions{
+		Ctx:    context.Background(),
+		Url:    api.URL + "/movie",
+		TO:     &to,
+		Method: http.MethodGet,
+	}
+
+	_, err := helpers.DoRequest(opt, movie)
+	return movie, err
+}
+
+func (api *API) GetMovies() (*models.SearchResult, error) {
+	searchResult := &models.SearchResult{}
+
+	to := time.Duration(10)
+	opt := &helpers.HttpOptions{
+		Ctx:    context.Background(),
+		Url:    api.URL + "/movies",
+		TO:     &to,
+		Method: http.MethodGet,
+	}
+
+	_, err := helpers.DoRequest(opt, searchResult)
+	return searchResult, err
 }
