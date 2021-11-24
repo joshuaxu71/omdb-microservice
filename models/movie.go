@@ -1,39 +1,64 @@
 package models
 
-type Movie struct {
-	Title      string   `json:"Title"`
-	Year       int      `json:"Year,string"`
-	Rated      string   `json:"Rated,omitempty"`
-	Released   string   `json:"Released,omitempty"`
-	Runtime    string   `json:"Runtime,omitempty"`
-	Genre      string   `json:"Genre,omitempty"`
-	Director   string   `json:"Director,omitempty"`
-	Writer     string   `json:"Writer,omitempty"`
-	Actors     string   `json:"Actors,omitempty"`
-	Plot       string   `json:"Plot,omitempty"`
-	Language   string   `json:"Language,omitempty"`
-	Country    string   `json:"Country,omitempty"`
-	Awards     string   `json:"Awards,omitempty"`
-	Poster     string   `json:"Poster"`
-	Ratings    []Rating `json:"Ratings,omitempty"`
-	Metascore  int      `json:"Metascore,string,omitempty"`
-	ImdbRating float64  `json:"ImdbRating,string,omitempty"`
-	ImdbVotes  int      `json:"ImdbVotes,string,omitempty"`
-	ImdbId     string   `json:"ImdbId,omitempty"`
-	Type       string   `json:"Type"`
-	Dvd        string   `json:"Dvd,omitempty"`
-	BoxOffice  string   `json:"BoxOffice,omitempty"`
-	Production string   `json:"Production,omitempty"`
-	Website    string   `json:"Website,omitempty"`
-	Error      string   `json:"Error,omitempty"`
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"stock-bit/common"
+)
+
+func GetMovieById(id string, title string) (*Movie, error) {
+	var uri string
+	if id != "" {
+		uri = fmt.Sprintf("%si=%s", common.OmdbAPI, id)
+	}
+	if title != "" {
+		uri = fmt.Sprintf("%st=%s", common.OmdbAPI, title)
+	}
+
+	if uri == "" {
+		return nil, errors.New("id or title must have a value")
+	}
+
+	resp, err := http.Get(uri)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	movie := Movie{}
+	e := json.NewDecoder(resp.Body)
+	e.Decode(&movie)
+	if movie.Error != "" {
+		return nil, errors.New(movie.Error)
+	}
+	return &movie, nil
 }
 
-type SearchResult struct {
-	Movies       []Movie `json:"Search"`
-	TotalResults int     `json:"totalResults,string"`
-}
+func GetMovies(searchword string, pagination *int) (*SearchResult, error) {
+	var uri string
+	if searchword == "" {
+		return nil, errors.New("searchword must have a value")
+	}
+	uri = fmt.Sprintf("%ss=%s", common.OmdbAPI, searchword)
 
-type Rating struct {
-	Source string `json:"Source"`
-	Value  string `json:"Value"`
+	if pagination != nil {
+		if *pagination < 1 {
+			return nil, errors.New("pagination must be a larger number than 0")
+		}
+		uri = fmt.Sprintf("%s&page=%d", uri, *pagination)
+	}
+
+	resp, err := http.Get(uri)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	searchResult := SearchResult{}
+	e := json.NewDecoder(resp.Body)
+	e.Decode(&searchResult)
+
+	return &searchResult, nil
 }

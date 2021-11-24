@@ -1,17 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
+	"stock-bit/common"
 	"stock-bit/models"
+	"strconv"
 
 	"github.com/gorilla/mux"
 )
-
-var OmdbAPI = "http://www.omdbapi.com/?apikey=%s&"
 
 type MovieHandler struct {
 	l *log.Logger
@@ -21,39 +22,15 @@ func NewMovieHandler(l *log.Logger) *MovieHandler {
 	return &MovieHandler{l}
 }
 
-func InitOmdbAPI() {
-	OmdbAPI = fmt.Sprintf(OmdbAPI, os.Getenv("OMDB_KEY"))
-}
-
 func (h *MovieHandler) GetMovieById(rw http.ResponseWriter, r *http.Request) {
-	var uri string
-	if mux.Vars(r)["id"] != "" {
-		uri = fmt.Sprintf("%si=%s", OmdbAPI, mux.Vars(r)["id"])
-	}
-	if mux.Vars(r)["title"] != "" {
-		uri = fmt.Sprintf("%st=%s", OmdbAPI, mux.Vars(r)["title"])
-	}
-
-	if uri == "" {
-		rw.WriteHeader(http.StatusNotFound)
-		rw.Write([]byte("id or title must have a value"))
-		return
-	}
-
-	resp, err := http.Get(uri)
+	movie, err := models.GetMovieById(mux.Vars(r)["id"], mux.Vars(r)["title"])
 	if err != nil {
-		rw.WriteHeader(http.StatusInternalServerError)
+		fmt.Println(err)
 		rw.Write([]byte(err.Error()))
 		return
-	}
-	defer resp.Body.Close()
-
-	movie := models.Movie{}
-	e := json.NewDecoder(resp.Body)
-	e.Decode(&movie)
-	if movie.Error != "" {
+	} else if movie == nil {
 		rw.WriteHeader(http.StatusNotFound)
-		rw.Write([]byte(movie.Error))
+		rw.Write([]byte(err.Error()))
 		return
 	}
 
@@ -67,30 +44,22 @@ func (h *MovieHandler) GetMovieById(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MovieHandler) GetMovies(rw http.ResponseWriter, r *http.Request) {
-	var uri string
+	if mux.Vars(r)["pagination"] == "" {
+		mux.Vars(r)["pagination"] = "1"
+	}
 
-	if mux.Vars(r)["searchword"] == "" {
-		rw.WriteHeader(http.StatusNotFound)
-		rw.Write([]byte("searchword must have a value"))
+	pagination, err := strconv.Atoi(mux.Vars(r)["pagination"])
+	if err != nil {
+		rw.WriteHeader(http.StatusBadRequest)
+		rw.Write([]byte("pagination has to be an integer"))
 		return
 	}
-	uri = fmt.Sprintf("%ss=%s", OmdbAPI, mux.Vars(r)["searchword"])
 
-	if mux.Vars(r)["pagination"] != "" {
-		uri = fmt.Sprintf("%s&page=%s", uri, mux.Vars(r)["pagination"])
-	}
-
-	resp, err := http.Get(uri)
+	searchResult, err := models.GetMovies(mux.Vars(r)["searchword"], common.IntegerAddress(pagination))
 	if err != nil {
-		rw.WriteHeader(http.StatusInternalServerError)
 		rw.Write([]byte(err.Error()))
 		return
 	}
-	defer resp.Body.Close()
-
-	searchResult := models.SearchResult{}
-	e := json.NewDecoder(resp.Body)
-	e.Decode(&searchResult)
 
 	marshalled, err := json.Marshal(searchResult)
 	if err != nil {
@@ -99,4 +68,34 @@ func (h *MovieHandler) GetMovies(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rw.Write(marshalled)
+}
+
+type Server struct {
+}
+
+func (s *Server) GetMovieById(ctx context.Context, in *models.GetMovieByIdParams) (*models.Movie, error) {
+	movie, err := models.GetMovieById(in.Id, in.Title)
+	if err != nil {
+		return nil, err
+	}
+
+	return movie, nil
+}
+
+func (s *Server) GetMovies(ctx context.Context, in *models.GetMoviesParams) (*models.SearchResult, error) {
+	if in.Pagination == "" {
+		in.Pagination = "1"
+	}
+
+	pagination, err := strconv.Atoi(in.Pagination)
+	if err != nil {
+		return nil, errors.New("pagination has to be an integer")
+	}
+
+	searchResult, err := models.GetMovies(in.Searchword, common.IntegerAddress(int(pagination)))
+	if err != nil {
+		return nil, err
+	}
+
+	return searchResult, nil
 }

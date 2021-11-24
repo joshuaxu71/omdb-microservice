@@ -1,14 +1,20 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"stock-bit/common"
 	"stock-bit/handlers"
+	"stock-bit/models"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -25,7 +31,7 @@ func main() {
 	r := mux.NewRouter()
 
 	// add routes to the router
-	handlers.InitOmdbAPI()
+	common.InitOmdbAPI()
 	handler := handlers.NewMovieHandler(l)
 
 	getRouter := r.Methods(http.MethodGet).Subrouter()
@@ -60,9 +66,27 @@ func main() {
 	// start the server
 	l.Printf("Starting server on port %s", os.Getenv("PORT"))
 
-	err = s.ListenAndServe()
+	go func() {
+		err = s.ListenAndServe()
+		if err != nil {
+			l.Printf("Error starting server: %s\n", err)
+			os.Exit(1)
+		}
+	}()
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", 9000))
 	if err != nil {
-		l.Printf("Error starting server: %s\n", err)
-		os.Exit(1)
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	sa := handlers.Server{}
+
+	grpcServer := grpc.NewServer()
+	reflection.Register(grpcServer)
+
+	models.RegisterMovieServiceServer(grpcServer, &sa)
+
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %s", err)
 	}
 }

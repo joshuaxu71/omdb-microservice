@@ -1,0 +1,57 @@
+syntax = "proto3";
+package proto;
+
+message Movie {
+  string Title = 1;
+  string Year = 2;
+  string Rated = 3;
+  string Released = 4;
+  string Runtime = 5;
+  string Genre = 6;
+  string Director = 7;
+  string Writer = 8;
+  string Actors = 9;
+  string Plot = 10;
+  string Language = 11;
+  string Country = 12;
+  string Awards = 13;
+  string Poster = 14;
+  repeated Rating Ratings = 15;
+  string Metascore = 16;
+  string ImdbRating = 17;
+  string ImdbVotes = 18;
+  string ImdbId = 19;
+  string Type = 20;
+  string Dvd = 21;
+  string BoxOffice = 22;
+  string Production = 23;
+  string Website = 24;
+  string Error = 25;
+}
+
+message Rating {
+    string Source = 1;
+    string Value = 2;
+}
+
+message SearchResult {
+	repeated Movie Search = 1;
+	string totalResults = 2;
+}
+
+message GetMovieByIdParams {
+  string id = 1;
+  string title = 2;
+}
+
+message GetMoviesParams {
+  string searchword = 1;
+  string pagination = 2;
+}
+
+service MovieService {
+  rpc GetMovieById(GetMovieByIdParams) returns (Movie) {}
+  rpc GetMovies(GetMoviesParams) returns (SearchResult) {}
+}
+
+option go_package = "./";
