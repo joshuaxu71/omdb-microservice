@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"stock-bit/common"
@@ -25,9 +24,10 @@ func NewMovieHandler(l *log.Logger) *MovieHandler {
 }
 
 func (h *MovieHandler) GetMovieById(rw http.ResponseWriter, r *http.Request) {
-	movie, err := models.GetMovieById(mux.Vars(r)["id"], mux.Vars(r)["title"])
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, "transport", "HTTP")
+	movie, err := models.GetMovieById(&ctx, mux.Vars(r)["id"], mux.Vars(r)["title"])
 	if err != nil {
-		fmt.Println(err)
 		rw.Write([]byte(err.Error()))
 		return
 	} else if movie == nil {
@@ -57,7 +57,9 @@ func (h *MovieHandler) GetMovies(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	searchResult, err := models.GetMovies(mux.Vars(r)["searchword"], common.IntegerAddress(pagination))
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, "transport", "HTTP")
+	searchResult, err := models.GetMovies(&ctx, mux.Vars(r)["searchword"], common.IntegerAddress(pagination))
 	if err != nil {
 		rw.Write([]byte(err.Error()))
 		return
@@ -76,7 +78,8 @@ type Server struct {
 }
 
 func (s *Server) GetMovieById(ctx context.Context, in *models.GetMovieByIdParams) (*models.Movie, error) {
-	movie, err := models.GetMovieById(in.Id, in.Title)
+	ctx = context.WithValue(ctx, "transport", "gRPC")
+	movie, err := models.GetMovieById(&ctx, in.Id, in.Title)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +97,8 @@ func (s *Server) GetMovies(ctx context.Context, in *models.GetMoviesParams) (*mo
 		return nil, errors.New("pagination has to be an integer")
 	}
 
-	searchResult, err := models.GetMovies(in.Searchword, common.IntegerAddress(int(pagination)))
+	ctx = context.WithValue(ctx, "transport", "gRPC")
+	searchResult, err := models.GetMovies(&ctx, in.Searchword, common.IntegerAddress(int(pagination)))
 	if err != nil {
 		return nil, err
 	}

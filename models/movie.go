@@ -1,6 +1,8 @@
 package models
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,20 +10,42 @@ import (
 	"stock-bit/common"
 )
 
-func GetMovieById(id string, title string) (*Movie, error) {
-	var uri string
-	if id != "" {
-		uri = fmt.Sprintf("%si=%s", common.OmdbAPI, id)
+// a function that will be ran by a routine to log search calls into MySQL db
+func LogSearch(c *context.Context, errs chan error, db *sql.DB, url string) {
+	ctx := *c
+	query := "INSERT INTO search_logs(transport, url) VALUES (?, ?)"
+	stmt, err := db.PrepareContext(ctx, query)
+	if err != nil {
+		errs <- fmt.Errorf("error %s when preparing SQL statement", err)
 	}
-	if title != "" {
-		uri = fmt.Sprintf("%st=%s", common.OmdbAPI, title)
+	defer stmt.Close()
+
+	_, err = stmt.ExecContext(ctx, ctx.Value("transport"), url)
+	if err != nil {
+		errs <- fmt.Errorf("error %s when inserting row into search_logs table", err)
 	}
 
-	if uri == "" {
+	errs <- nil
+}
+
+func GetMovieById(ctx *context.Context, id string, title string) (*Movie, error) {
+	var url string
+	if id != "" {
+		url = fmt.Sprintf("%si=%s", common.OmdbAPI, id)
+	}
+	if title != "" {
+		url = fmt.Sprintf("%st=%s", common.OmdbAPI, title)
+	}
+
+	if url == "" {
 		return nil, errors.New("id or title must have a value")
 	}
 
-	resp, err := http.Get(uri)
+	errs := make(chan error)
+	db := common.GetDb()
+	go LogSearch(ctx, errs, db, url)
+
+	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -33,24 +57,33 @@ func GetMovieById(id string, title string) (*Movie, error) {
 	if movie.Error != "" {
 		return nil, errors.New(movie.Error)
 	}
+
+	if err := <-errs; err != nil {
+		return nil, err
+	}
+
 	return &movie, nil
 }
 
-func GetMovies(searchword string, pagination *int) (*SearchResult, error) {
-	var uri string
+func GetMovies(ctx *context.Context, searchword string, pagination *int) (*SearchResult, error) {
+	var url string
 	if searchword == "" {
 		return nil, errors.New("searchword must have a value")
 	}
-	uri = fmt.Sprintf("%ss=%s", common.OmdbAPI, searchword)
+	url = fmt.Sprintf("%ss=%s", common.OmdbAPI, searchword)
 
 	if pagination != nil {
 		if *pagination < 1 {
 			return nil, errors.New("pagination must be a larger number than 0")
 		}
-		uri = fmt.Sprintf("%s&page=%d", uri, *pagination)
+		url = fmt.Sprintf("%s&page=%d", url, *pagination)
 	}
 
-	resp, err := http.Get(uri)
+	errs := make(chan error)
+	db := common.GetDb()
+	go LogSearch(ctx, errs, db, url)
+
+	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +92,10 @@ func GetMovies(searchword string, pagination *int) (*SearchResult, error) {
 	searchResult := SearchResult{}
 	e := json.NewDecoder(resp.Body)
 	e.Decode(&searchResult)
+
+	if err := <-errs; err != nil {
+		return nil, err
+	}
 
 	return &searchResult, nil
 }

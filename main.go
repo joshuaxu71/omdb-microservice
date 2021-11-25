@@ -53,7 +53,7 @@ func main() {
 			"searchword", "{searchword}",
 		)
 
-	// create a new server
+	// create HTTP server
 	s := http.Server{
 		Addr:         os.Getenv("PORT"), // configure the bind address
 		Handler:      r,                 // set the default handler
@@ -63,7 +63,7 @@ func main() {
 		IdleTimeout:  120 * time.Second, // max time for connections using TCP Keep-Alive
 	}
 
-	// start the server
+	// start HTTP server
 	l.Printf("Starting server on port %s", os.Getenv("PORT"))
 
 	go func() {
@@ -74,18 +74,22 @@ func main() {
 		}
 	}()
 
+	// create gRPC listener
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", 9000))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	// create gRPC server
 	sa := handlers.Server{}
 
 	grpcServer := grpc.NewServer()
 	reflection.Register(grpcServer)
 
+	// register services
 	models.RegisterMovieServiceServer(grpcServer, &sa)
 
+	// start gRPC server
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}

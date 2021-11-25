@@ -2,14 +2,47 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
+	"log"
 	"net/http"
 	"reflect"
 	"stock-bit/helpers"
 	"stock-bit/models"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
-func TestGetMovieByIdREST(t *testing.T) {
+var searchLogGetMovieByIdHTTP = &helpers.SearchLog{
+	Transport: "HTTP",
+	URL:       "http://test/movie",
+}
+
+var searchLogGetMoviesHTTP = &helpers.SearchLog{
+	Transport: "HTTP",
+	URL:       "http://test/movies",
+}
+
+var searchLogGetMovieByIdGRPC = &helpers.SearchLog{
+	Transport: "gRPC",
+	URL:       "http://test/movie",
+}
+
+var searchLogGetMoviesGRPC = &helpers.SearchLog{
+	Transport: "gRPC",
+	URL:       "http://test/movies",
+}
+
+func NewMock() (*sql.DB, sqlmock.Sqlmock) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+
+	return db, mock
+}
+
+func TestGetMovieByIdHTTP(t *testing.T) {
 	expectedResponse := models.Movie{
 		Title:    "Doctor Strange",
 		Year:     "2016",
@@ -53,9 +86,22 @@ func TestGetMovieByIdREST(t *testing.T) {
 	srv := helpers.HttpMock("/movie", http.StatusOK, expectedResponse)
 	defer srv.Close()
 
+	ctx := context.WithValue(context.Background(), "transport", "HTTP")
+	errs := make(chan error)
+	db, mock := NewMock()
+	query := `INSERT INTO search_logs(transport, url) VALUES (?, ?)`
+	prep := mock.ExpectPrepare(query)
+	prep.ExpectExec().WithArgs(searchLogGetMovieByIdHTTP.Transport, searchLogGetMovieByIdHTTP.URL).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	go models.LogSearch(&ctx, errs, db, "http://test/movie")
+
 	api := API{URL: srv.URL}
 	response, err := api.GetMovieById()
 	if err != nil {
+		t.Error(err)
+	}
+
+	if err := <-errs; err != nil {
 		t.Error(err)
 	}
 
@@ -105,6 +151,15 @@ func TestGetMovieByIdGRPC(t *testing.T) {
 		Website:    "N/A",
 	}
 
+	ctx := context.WithValue(context.Background(), "transport", "gRPC")
+	errs := make(chan error)
+	db, mock := NewMock()
+	query := `INSERT INTO search_logs(transport, url) VALUES (?, ?)`
+	prep := mock.ExpectPrepare(query)
+	prep.ExpectExec().WithArgs(searchLogGetMovieByIdGRPC.Transport, searchLogGetMovieByIdGRPC.URL).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	go models.LogSearch(&ctx, errs, db, "http://test/movie")
+
 	mockMovieServiceClient := helpers.GrpcMock(t, "GetMovieById")
 	response, err := mockMovieServiceClient.GetMovieById(
 		context.Background(),
@@ -114,12 +169,16 @@ func TestGetMovieByIdGRPC(t *testing.T) {
 		t.Error(err)
 	}
 
+	if err := <-errs; err != nil {
+		t.Error(err)
+	}
+
 	if !reflect.DeepEqual(expectedResponse, *response) {
 		t.Errorf("expected: %v\nactual: %v\n", expectedResponse, *response)
 	}
 }
 
-func TestGetMoviesREST(t *testing.T) {
+func TestGetMoviesHTTP(t *testing.T) {
 	expectedResponse := models.SearchResult{
 		Search: []*models.Movie{
 			{
@@ -199,9 +258,22 @@ func TestGetMoviesREST(t *testing.T) {
 	srv := helpers.HttpMock("/movies", http.StatusOK, expectedResponse)
 	defer srv.Close()
 
+	ctx := context.WithValue(context.Background(), "transport", "HTTP")
+	errs := make(chan error)
+	db, mock := NewMock()
+	query := `INSERT INTO search_logs(transport, url) VALUES (?, ?)`
+	prep := mock.ExpectPrepare(query)
+	prep.ExpectExec().WithArgs(searchLogGetMoviesHTTP.Transport, searchLogGetMoviesHTTP.URL).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	go models.LogSearch(&ctx, errs, db, "http://test/movies")
+
 	api := API{URL: srv.URL}
 	response, err := api.GetMovies()
 	if err != nil {
+		t.Error(err)
+	}
+
+	if err := <-errs; err != nil {
 		t.Error(err)
 	}
 
@@ -286,6 +358,15 @@ func TestGetMoviesGRPC(t *testing.T) {
 		},
 		TotalResults: "989",
 	}
+
+	ctx := context.WithValue(context.Background(), "transport", "gRPC")
+	errs := make(chan error)
+	db, mock := NewMock()
+	query := `INSERT INTO search_logs(transport, url) VALUES (?, ?)`
+	prep := mock.ExpectPrepare(query)
+	prep.ExpectExec().WithArgs(searchLogGetMoviesGRPC.Transport, searchLogGetMoviesGRPC.URL).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	go models.LogSearch(&ctx, errs, db, "http://test/movies")
 
 	mockMovieServiceClient := helpers.GrpcMock(t, "GetMovies")
 	response, err := mockMovieServiceClient.GetMovies(
